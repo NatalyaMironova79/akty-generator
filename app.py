@@ -12,8 +12,8 @@ import re
 
 # --- Склонение ФИО и должностей ---
 try:
-    import pymorphy2
-    _morph = pymorphy2.MorphAnalyzer()
+    import pymorphy3
+    _morph = pymorphy3.MorphAnalyzer()
 except Exception:
     _morph = None
 
@@ -52,7 +52,7 @@ def decline_fio(fio):
         if not word or not word[0].isalpha():
             declined.append(word)
             continue
-        # pymorphy2 — пробуем как существительное в творительном падеже
+        # pymorphy3 — пробуем как существительное в творительном падеже
         parsed = _morph.parse(word)[0]
         inflected = parsed.inflect({"loct", "ablt"})  # ablt = творительный
         if inflected:
