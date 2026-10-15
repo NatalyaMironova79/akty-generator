@@ -1,0 +1,7 @@
+streamlit
+openpyxl
+docxtpl
+python-docx
+num2words
+pymorphy3
+pymorphy3-dicts-ru
