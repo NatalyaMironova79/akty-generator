@@ -74,29 +74,37 @@ def _decline_fio(fio, case):
 
 
 def decline_fio_ablt(fio):
-    """Творительный падеж: 'Иванов Иван Иванович' → 'Ивановым Иваном Ивановичем'."""
+    """Творительный: 'Иванов Иван Иванович' → 'Ивановым Иваном Ивановичем'."""
     return _decline_fio(fio, "ablt")
 
 
 def decline_fio_gent(fio):
-    """Родительный падеж: 'Иванов Иван Иванович' → 'Иванова Ивана Ивановича'."""
+    """Родительный: 'Иванов Иван Иванович' → 'Иванова Ивана Ивановича'."""
     return _decline_fio(fio, "gent")
 
 
 def decline_position(position):
-    """'директор' → 'директора' (родительный). Используется только если нужно."""
+    """Склоняет должность в родительный, если она ещё не в нём.
+    'директор' → 'директора', 'директора' → 'директора' (не трогаем)."""
     if not position:
         return ""
+    s = str(position).strip()
+    if not s:
+        return ""
+    # Если уже оканчивается на характерные родительные окончания — оставляем
+    wl = s.lower()
+    if wl.endswith(("а", "я", "ого", "его")):
+        return s
     if _morph is None:
-        return position
-    parsed = _morph.parse(position)[0]
+        return s
+    parsed = _morph.parse(s)[0]
     inflected = parsed.inflect({"gent"})
     if inflected:
         result = inflected.word
-        if position[0].isupper():
+        if s[0].isupper():
             result = result.capitalize()
         return result
-    return position
+    return s
 
 
 MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -147,7 +155,6 @@ with col2:
     template_file = st.file_uploader("Шаблон docx", type=["docx"])
 
 
-# --- Форматирование ---
 def fmt_date(value):
     if value is None or value == "": return ""
     if isinstance(value, datetime): return value.strftime("%d.%m.%Y")
@@ -274,9 +281,10 @@ if xls_file and template_file:
                                     f"{participle} на основании {executor_basis}")
                         executor_rep_short = short_name(executor_name)
                     else:
-                        # Юрлицо: "{ExecutorType} {ExecutorName}, в лице {ExecutorPosition} {ФИО в род.}, действующего на основании ..."
+                        # Юрлицо: "{ExecutorType} {ExecutorName}, в лице {должность_род} {ФИО_род}, действующего на основании ..."
+                        pos_gen = decline_position(executor_pos)
                         rep_gen = rep_gen_manual or decline_fio_gent(executor_rep)
-                        preamble = (f"{executor_type} {executor_name}, в лице {executor_pos} {rep_gen}, "
+                        preamble = (f"{executor_type} {executor_name}, в лице {pos_gen} {rep_gen}, "
                                     f"действующего на основании {executor_basis}")
                         executor_rep_short = short_name(executor_rep)
 
