@@ -26,7 +26,6 @@ def _detect_gender(fio):
             return "f"
         if otch.endswith(("вич", "ич")):
             return "m"
-    # По имени
     if len(parts) >= 2:
         name = parts[1].lower()
         female_names = {"анна","мария","елена","ольга","татьяна","наталья","ирина",
@@ -52,12 +51,17 @@ def decline_fio(fio):
         if not word or not word[0].isalpha():
             declined.append(word)
             continue
-        # pymorphy3 — пробуем как существительное в творительном падеже
+        # Фамилия — не склоняем, если оканчивается на согласную и НЕ на -ов/-ев/-ин/-ский/-ой/-ая
+        if i == 0:
+            wl = word.lower()
+            if not wl.endswith(("ов","ев","ёв","ин","ын","ский","цкий",
+                                "ой","ая","ий","ова","ева","ёва","ина","ына","а","я")):
+                declined.append(word)
+                continue
         parsed = _morph.parse(word)[0]
-        inflected = parsed.inflect({"loct", "ablt"})  # ablt = творительный
+        inflected = parsed.inflect({"ablt"})
         if inflected:
             result = inflected.word
-            # Сохраняем заглавную букву
             if word[0].isupper():
                 result = result.capitalize()
             declined.append(result)
@@ -72,7 +76,7 @@ def decline_position(position):
     if _morph is None:
         return position
     parsed = _morph.parse(position)[0]
-    inflected = parsed.inflect({"gent"})  # gent = родительный
+    inflected = parsed.inflect({"gent"})
     if inflected:
         result = inflected.word
         if position[0].isupper():
@@ -80,17 +84,39 @@ def decline_position(position):
         return result
     return position
 
-def participle_by_gender(gender, is_company=False):
-    """
-    Причастие 'действующий'/'действующего'/'действующей'.
-    Для ИП — по полу: 'действующим'/'действующей' (творительный).
-    Для юрлица — 'действующего' (родительный).
-    """
-    if is_company:
-        return "действующего"
-    if gender == "f":
-        return "действующей"
-    return "действующим"
+
+MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+             "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+
+def month_year_ru(date_str):
+    """01.10.2026 → 'Октябрь 2026'"""
+    try:
+        dt = datetime.strptime(date_str, "%d.%m.%Y")
+        return f"{MONTHS_RU[dt.month - 1]} {dt.year}"
+    except (ValueError, TypeError):
+        return ""
+
+def short_name(full_name):
+    """ФИО → 'Фамилия И.О.' с обработкой префиксов ИП/ООО."""
+    if not full_name:
+        return ""
+    s = str(full_name).strip()
+    prefixes = [
+        "Индивидуальный предприниматель", "ИП",
+        "Унитарное предприятие", "УП",
+        "Общество с ограниченной ответственностью", "ООО", "ОДО", "ЗАО", "ОАО",
+    ]
+    for pref in prefixes:
+        if s.lower().startswith(pref.lower()):
+            s = s[len(pref):].strip()
+            s = s.lstrip('«»"\' -—')
+            break
+    parts = s.split()
+    if len(parts) >= 3:
+        return f"{parts[0]} {parts[1][0]}.{parts[2][0]}."
+    if len(parts) == 2:
+        return f"{parts[0]} {parts[1][0]}."
+    return s
 
 
 st.set_page_config(page_title="Генератор актов", layout="centered")
@@ -150,51 +176,6 @@ def get_vat_note(vat_mode, vat_rate, total_with_vat):
     vat_amount = total_with_vat * rate / (100 + rate)
     return f"в том числе НДС {fmt_money(vat_amount)} ({money_to_words(vat_amount)}) руб."
 
-
-
-MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-             "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
-
-def month_year_ru(date_str):
-    """01.10.2026 → 'Октябрь 2026'"""
-    try:
-        dt = datetime.strptime(date_str, "%d.%m.%Y")
-        return f"{MONTHS_RU[dt.month - 1]} {dt.year}"
-    except (ValueError, TypeError):
-        return ""
-
-def short_name(full_name):
-    """ФИО → 'Фамилия И.О.' с обработкой префиксов ИП/ООО."""
-    if not full_name:
-        return ""
-    s = str(full_name).strip()
-
-    prefixes = [
-        "Индивидуальный предприниматель",
-        "ИП",
-        "Унитарное предприятие",
-        "УП",
-        "Общество с ограниченной ответственностью",
-        "ООО",
-        "ОДО",
-        "ЗАО",
-        "ОАО",
-    ]
-    for pref in prefixes:
-        if s.lower().startswith(pref.lower()):
-            s = s[len(pref):].strip()
-            s = s.lstrip('«»"\' -—')
-            break
-
-    parts = s.split()
-    if len(parts) >= 3:
-        return f"{parts[0]} {parts[1][0]}.{parts[2][0]}."
-    if len(parts) == 2:
-        return f"{parts[0]} {parts[1][0]}."
-    return s
-
-
-
 def set_cell(cell, text):
     cell.text = ""
     p = cell.paragraphs[0]
@@ -209,6 +190,7 @@ def clone_row_after(table, row_idx):
 
 def remove_row(table, row_idx):
     table._tbl.remove(table.rows[row_idx]._tr)
+
 
 if xls_file and template_file:
     if st.button("Сгенерировать акты", type="primary"):
@@ -251,27 +233,22 @@ if xls_file and template_file:
                     executor_pos = partner.get("ExecutorPosition") or ""
                     executor_basis = partner.get("ExecutorBasis") or ""
 
-                    # Опциональное ручное переопределение
+                    # Опциональное ручное переопределение падежей
                     name_instr_manual = str(partner.get("ExecutorNameInstr") or "").strip()
                     pos_gen_manual = str(partner.get("ExecutorPositionGen") or "").strip()
                     rep_instr_manual = str(partner.get("ExecutorRepresentativeInstr") or "").strip()
 
                     if executor_type == "ИП":
-                        # ИП: префикс + ФИО в творительном падеже
-                        st.write(f"DEBUG: ИП ветка. executor_name = {executor_name!r}")
+                        # ИП: "Индивидуальным предпринимателем {ФИО в твор.}, действующим/действующей на основании ..."
                         name_instr = name_instr_manual or decline_fio(executor_name)
-                        st.write(f"DEBUG: name_instr = {name_instr!r}")
-                        st.write(f"DEBUG: _morph = {_morph}")
                         gender = _detect_gender(executor_name)
                         participle = "действующей" if gender == "f" else "действующим"
                         preamble = (f"Индивидуальным предпринимателем {name_instr}, "
                                     f"{participle} на основании {executor_basis}")
                         executor_rep_short = short_name(executor_name)
                     else:
-                        # Юрлицо: {ExecutorType} {ExecutorName}, в лице ...
-                        st.write(f"DEBUG: Юрлицо ветка. executor_rep = {executor_rep!r}")
+                        # Юрлицо: "{ExecutorType} {ExecutorName}, в лице {должность_род} {ФИО_твор}, действующего на основании ..."
                         pos_gen = pos_gen_manual or decline_position(executor_pos)
-                        st.write(f"DEBUG: rep_instr = {rep_instr!r}")
                         rep_instr = rep_instr_manual or decline_fio(executor_rep)
                         preamble = (f"{executor_type} {executor_name}, в лице {pos_gen} {rep_instr}, "
                                     f"действующего на основании {executor_basis}")
