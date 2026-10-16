@@ -258,7 +258,10 @@ if xls_file and template_file:
 
                     if executor_type == "ИП":
                         # ИП: префикс + ФИО в творительном падеже
+                        st.write(f"DEBUG: ИП ветка. executor_name = {executor_name!r}")
                         name_instr = name_instr_manual or decline_fio(executor_name)
+                        st.write(f"DEBUG: name_instr = {name_instr!r}")
+                        st.write(f"DEBUG: _morph = {_morph}")
                         gender = _detect_gender(executor_name)
                         participle = "действующей" if gender == "f" else "действующим"
                         preamble = (f"Индивидуальным предпринимателем {name_instr}, "
@@ -266,7 +269,9 @@ if xls_file and template_file:
                         executor_rep_short = short_name(executor_name)
                     else:
                         # Юрлицо: {ExecutorType} {ExecutorName}, в лице ...
+                        st.write(f"DEBUG: Юрлицо ветка. executor_rep = {executor_rep!r}")
                         pos_gen = pos_gen_manual or decline_position(executor_pos)
+                        st.write(f"DEBUG: rep_instr = {rep_instr!r}")
                         rep_instr = rep_instr_manual or decline_fio(executor_rep)
                         preamble = (f"{executor_type} {executor_name}, в лице {pos_gen} {rep_instr}, "
                                     f"действующего на основании {executor_basis}")
