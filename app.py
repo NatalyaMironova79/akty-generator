@@ -10,12 +10,13 @@ import zipfile
 import io
 import re
 
-# --- Склонение ФИО и должностей ---
+# --- Склонение ФИО ---
 try:
     import pymorphy3
     _morph = pymorphy3.MorphAnalyzer()
 except Exception:
     _morph = None
+
 
 def _detect_gender(fio):
     """Определяет пол по отчеству/имени. 'm' / 'f' / None"""
@@ -37,8 +38,9 @@ def _detect_gender(fio):
             return "f"
     return None
 
-def decline_fio(fio):
-    """'Иванов Иван Иванович' → 'Ивановым Иваном Ивановичем' (творительный)"""
+
+def _decline_fio(fio, case):
+    """Склонение ФИО. case='ablt' (творительный) или 'gent' (родительный)."""
     if not fio:
         return ""
     if _morph is None:
@@ -51,7 +53,8 @@ def decline_fio(fio):
         if not word or not word[0].isalpha():
             declined.append(word)
             continue
-        # Фамилия — не склоняем, если оканчивается на согласную и НЕ на -ов/-ев/-ин/-ский/-ой/-ая
+        # Фамилия — не склоняем, если оканчивается на согласную
+        # и НЕ на -ов/-ев/-ин/-ский/-ой/-ая/-ова/-ева/-ина
         if i == 0:
             wl = word.lower()
             if not wl.endswith(("ов","ев","ёв","ин","ын","ский","цкий",
@@ -59,7 +62,7 @@ def decline_fio(fio):
                 declined.append(word)
                 continue
         parsed = _morph.parse(word)[0]
-        inflected = parsed.inflect({"ablt"})
+        inflected = parsed.inflect({case})
         if inflected:
             result = inflected.word
             if word[0].isupper():
@@ -69,8 +72,19 @@ def decline_fio(fio):
             declined.append(word)
     return " ".join(declined)
 
+
+def decline_fio_ablt(fio):
+    """Творительный падеж: 'Иванов Иван Иванович' → 'Ивановым Иваном Ивановичем'."""
+    return _decline_fio(fio, "ablt")
+
+
+def decline_fio_gent(fio):
+    """Родительный падеж: 'Иванов Иван Иванович' → 'Иванова Ивана Ивановича'."""
+    return _decline_fio(fio, "gent")
+
+
 def decline_position(position):
-    """'директор' → 'директора' (родительный)"""
+    """'директор' → 'директора' (родительный). Используется только если нужно."""
     if not position:
         return ""
     if _morph is None:
@@ -88,6 +102,7 @@ def decline_position(position):
 MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
              "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
 
+
 def month_year_ru(date_str):
     """01.10.2026 → 'Октябрь 2026'"""
     try:
@@ -95,6 +110,7 @@ def month_year_ru(date_str):
         return f"{MONTHS_RU[dt.month - 1]} {dt.year}"
     except (ValueError, TypeError):
         return ""
+
 
 def short_name(full_name):
     """ФИО → 'Фамилия И.О.' с обработкой префиксов ИП/ООО."""
@@ -119,6 +135,7 @@ def short_name(full_name):
     return s
 
 
+# --- Streamlit UI ---
 st.set_page_config(page_title="Генератор актов", layout="centered")
 st.title("Генератор актов сдачи-приёмки")
 st.write("Загрузите XLS с данными и шаблон docx — получите ZIP с готовыми актами.")
@@ -129,6 +146,8 @@ with col1:
 with col2:
     template_file = st.file_uploader("Шаблон docx", type=["docx"])
 
+
+# --- Форматирование ---
 def fmt_date(value):
     if value is None or value == "": return ""
     if isinstance(value, datetime): return value.strftime("%d.%m.%Y")
@@ -141,11 +160,13 @@ def fmt_date(value):
         except ValueError: pass
     return s
 
+
 def fmt_money(value):
     if value is None or value == "": return "0,00"
     try: num = float(value)
     except (ValueError, TypeError): return str(value)
     return f"{num:,.2f}".replace(",", " ").replace(".", ",")
+
 
 def money_to_words(value):
     try: num = float(value)
@@ -162,9 +183,11 @@ def money_to_words(value):
     else: kop_word = "копеек"
     return f"{rub_words} {rub_word} {kop:02d} {kop_word}"
 
+
 def normalize_vat_mode(value):
     s = str(value).strip().lower()
     return "с НДС" if ("с ндс" in s and "без" not in s) else "без НДС"
+
 
 def get_vat_note(vat_mode, vat_rate, total_with_vat):
     if vat_mode == "без НДС":
@@ -176,11 +199,13 @@ def get_vat_note(vat_mode, vat_rate, total_with_vat):
     vat_amount = total_with_vat * rate / (100 + rate)
     return f"в том числе НДС {fmt_money(vat_amount)} ({money_to_words(vat_amount)}) руб."
 
+
 def set_cell(cell, text):
     cell.text = ""
     p = cell.paragraphs[0]
     run = p.add_run(str(text))
     run.font.size = Pt(10)
+
 
 def clone_row_after(table, row_idx):
     src_tr = table.rows[row_idx]._tr
@@ -188,10 +213,12 @@ def clone_row_after(table, row_idx):
     src_tr.addnext(new_tr)
     return table.rows[row_idx + 1]
 
+
 def remove_row(table, row_idx):
     table._tbl.remove(table.rows[row_idx]._tr)
 
 
+# --- Основная логика ---
 if xls_file and template_file:
     if st.button("Сгенерировать акты", type="primary"):
         with st.spinner("Генерируем..."):
@@ -201,6 +228,7 @@ if xls_file and template_file:
                 f.write(template_file.getbuffer())
 
             wb = openpyxl.load_workbook("_uploaded.xlsx", data_only=True)
+
             def read_sheet(name):
                 ws = wb[name]
                 headers = [c.value for c in ws[1]]
@@ -233,27 +261,26 @@ if xls_file and template_file:
                     executor_pos = partner.get("ExecutorPosition") or ""
                     executor_basis = partner.get("ExecutorBasis") or ""
 
-                    # Опциональное ручное переопределение падежей
+                    # Ручное переопределение (опционально)
                     name_instr_manual = str(partner.get("ExecutorNameInstr") or "").strip()
-                    pos_gen_manual = str(partner.get("ExecutorPositionGen") or "").strip()
-                    rep_instr_manual = str(partner.get("ExecutorRepresentativeInstr") or "").strip()
+                    rep_gen_manual = str(partner.get("ExecutorRepresentativeGen") or "").strip()
 
                     if executor_type == "ИП":
                         # ИП: "Индивидуальным предпринимателем {ФИО в твор.}, действующим/действующей на основании ..."
-                        name_instr = name_instr_manual or decline_fio(executor_name)
+                        name_instr = name_instr_manual or decline_fio_ablt(executor_name)
                         gender = _detect_gender(executor_name)
                         participle = "действующей" if gender == "f" else "действующим"
                         preamble = (f"Индивидуальным предпринимателем {name_instr}, "
                                     f"{participle} на основании {executor_basis}")
                         executor_rep_short = short_name(executor_name)
                     else:
-                        # Юрлицо: "{ExecutorType} {ExecutorName}, в лице {должность_род} {ФИО_твор}, действующего на основании ..."
-                        pos_gen = pos_gen_manual or decline_position(executor_pos)
-                        rep_instr = rep_instr_manual or decline_fio(executor_rep)
-                        preamble = (f"{executor_type} {executor_name}, в лице {pos_gen} {rep_instr}, "
+                        # Юрлицо: "{ExecutorType} {ExecutorName}, в лице {ExecutorPosition} {ФИО в род.}, действующего на основании ..."
+                        rep_gen = rep_gen_manual or decline_fio_gent(executor_rep)
+                        preamble = (f"{executor_type} {executor_name}, в лице {executor_pos} {rep_gen}, "
                                     f"действующего на основании {executor_basis}")
                         executor_rep_short = short_name(executor_rep)
 
+                    # --- Таблица 1: рекламные услуги ---
                     serv_total = 0.0
                     serv_data = []
                     for idx, r in enumerate(org_serv, start=1):
@@ -269,6 +296,7 @@ if xls_file and template_file:
                             "total_cost": fmt_money(total),
                         })
 
+                    # --- Таблица 2: услуги содействия ---
                     report_month = month_year_ru(fmt_date(partner["ReportPeriodFrom"]))
                     cars_total = 0.0
                     cars_data = []
@@ -307,6 +335,7 @@ if xls_file and template_file:
 
                     d = Document("_temp.docx")
 
+                    # Таблица 1 (реклама) — индекс 0
                     t1 = d.tables[0]
                     remove_row(t1, 3)
                     remove_row(t1, 2)
@@ -320,6 +349,7 @@ if xls_file and template_file:
                         set_cell(new_row.cells[5], row["total_cost"])
                     set_cell(t1.rows[-1].cells[5], fmt_money(serv_total))
 
+                    # Таблица 2 (содействие) — индекс 1
                     t2 = d.tables[1]
                     remove_row(t2, 2)
                     remove_row(t2, 1)
