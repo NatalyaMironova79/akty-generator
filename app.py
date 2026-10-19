@@ -1,3 +1,4 @@
+
 import streamlit as st
 import openpyxl
 from datetime import datetime, timedelta
@@ -19,6 +20,21 @@ except Exception:
 
 ORG_FORMS = ["ЧТУП", "ОДО", "ООО", "ОАО", "ЗАО", "УП", "ИП", "ПТ", "СП", "АО"]
 
+# Расшифровки орг. форм в ТВОРИТЕЛЬНОМ падеже (для "составлен кем")
+ORG_FORMS_ABLT = {
+    "ЧТУП": "Частным торговым унитарным предприятием",
+    "УП": "Унитарным предприятием",
+    "ООО": "Обществом с ограниченной ответственностью",
+    "ОДО": "Обществом с дополнительной ответственностью",
+    "ЗАО": "Закрытым акционерным обществом",
+    "ОАО": "Открытым акционерным обществом",
+    "АО": "Акционерным обществом",
+    "ПТ": "Полным товариществом",
+    "СП": "Совместным предприятием",
+    "ИП": "Индивидуальным предпринимателем",
+}
+
+
 def parse_executor(executor_name_raw):
     if not executor_name_raw:
         return ("", "")
@@ -29,6 +45,7 @@ def parse_executor(executor_name_raw):
             clean = re.sub(pattern, '', s, flags=re.IGNORECASE).strip()
             return (form.upper(), clean)
     return ("", s)
+
 
 def _detect_gender(fio):
     parts = str(fio).split()
@@ -48,6 +65,7 @@ def _detect_gender(fio):
         if name in female_names:
             return "f"
     return None
+
 
 def _decline_fio(fio, case):
     if not fio:
@@ -79,11 +97,14 @@ def _decline_fio(fio, case):
             declined.append(word)
     return " ".join(declined)
 
+
 def decline_fio_ablt(fio):
     return _decline_fio(fio, "ablt")
 
+
 def decline_fio_gent(fio):
     return _decline_fio(fio, "gent")
+
 
 def decline_position(position):
     if not position:
@@ -105,8 +126,10 @@ def decline_position(position):
         return result
     return s
 
+
 MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
              "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+
 
 def month_year_ru(date_str):
     try:
@@ -114,6 +137,7 @@ def month_year_ru(date_str):
         return f"{MONTHS_RU[dt.month - 1]} {dt.year}"
     except (ValueError, TypeError):
         return ""
+
 
 def short_name(full_name):
     if not full_name:
@@ -136,6 +160,7 @@ def short_name(full_name):
         return f"{parts[0]} {parts[1][0]}."
     return s
 
+
 # --- Streamlit UI ---
 st.set_page_config(page_title="Генератор актов", layout="centered")
 st.title("Генератор актов сдачи-приёмки")
@@ -146,6 +171,7 @@ with col1:
     xls_file = st.file_uploader("XLS с данными", type=["xlsx"])
 with col2:
     template_file = st.file_uploader("Шаблон docx", type=["docx"])
+
 
 def fmt_date(value):
     if value is None or value == "": return ""
@@ -159,11 +185,13 @@ def fmt_date(value):
         except ValueError: pass
     return s
 
+
 def fmt_money(value):
     if value is None or value == "": return "0,00"
     try: num = float(value)
     except (ValueError, TypeError): return str(value)
     return f"{num:,.2f}".replace(",", " ").replace(".", ",")
+
 
 def money_to_words(value):
     try: num = float(value)
@@ -180,9 +208,11 @@ def money_to_words(value):
     else: kop_word = "копеек"
     return f"{rub_words} {rub_word} {kop:02d} {kop_word}"
 
+
 def normalize_vat_mode(value):
     s = str(value).strip().lower()
     return "с НДС" if ("с ндс" in s and "без" not in s) else "без НДС"
+
 
 def get_vat_note(vat_mode, vat_rate, total_with_vat):
     if vat_mode == "без НДС":
@@ -194,11 +224,13 @@ def get_vat_note(vat_mode, vat_rate, total_with_vat):
     vat_amount = total_with_vat * rate / (100 + rate)
     return f"в том числе НДС {fmt_money(vat_amount)} ({money_to_words(vat_amount)}) руб."
 
+
 def set_cell(cell, text):
     cell.text = ""
     p = cell.paragraphs[0]
     run = p.add_run(str(text))
     run.font.size = Pt(10)
+
 
 def clone_row_after(table, row_idx):
     src_tr = table.rows[row_idx]._tr
@@ -206,8 +238,10 @@ def clone_row_after(table, row_idx):
     src_tr.addnext(new_tr)
     return table.rows[row_idx + 1]
 
+
 def remove_row(table, row_idx):
     table._tbl.remove(table.rows[row_idx]._tr)
+
 
 # --- Основная логика ---
 if xls_file and template_file:
@@ -265,6 +299,7 @@ if xls_file and template_file:
                     org_cars = [r for r in car_rows if r["OrgID"] == org_id]
 
                     if executor_type == "ИП":
+                        # ИП: "Индивидуальным предпринимателем {ФИО в твор.}, действующим/действующей на основании Свидетельства о госрегистрации № {OrgID}"
                         name_instr = name_instr_manual or decline_fio_ablt(executor_name)
                         gender = _detect_gender(executor_name)
                         participle = "действующей" if gender == "f" else "действующим"
@@ -275,16 +310,19 @@ if xls_file and template_file:
                                     f"{participle} на основании {basis_clean}")
                         executor_rep_short = short_name(executor_name)
                     else:
+                        # Юрлицо: "Частным торговым унитарным предприятием ГЕСН, в лице директора Иванова Ивана Ивановича, действующего на основании Устава"
+                        full_type_ablt = ORG_FORMS_ABLT.get(executor_type, executor_type)
                         pos_gen = decline_position(executor_pos)
                         rep_gen = rep_gen_manual or decline_fio_gent(executor_rep)
                         if rep_gen:
-                            preamble = (f"{executor_type} {executor_name}, в лице {pos_gen} {rep_gen}, "
+                            preamble = (f"{full_type_ablt} {executor_name}, в лице {pos_gen} {rep_gen}, "
                                         f"действующего на основании {executor_basis}")
                         else:
-                            preamble = (f"{executor_type} {executor_name}, в лице {pos_gen}, "
+                            preamble = (f"{full_type_ablt} {executor_name}, в лице {pos_gen}, "
                                         f"действующего на основании {executor_basis}")
                         executor_rep_short = short_name(executor_rep)
 
+                    # --- Таблица 1: рекламные услуги ---
                     serv_total = 0.0
                     serv_data = []
                     for idx, r in enumerate(org_serv, start=1):
@@ -300,6 +338,7 @@ if xls_file and template_file:
                             "total_cost": fmt_money(total),
                         })
 
+                    # --- Таблица 2: услуги содействия ---
                     report_month = month_year_ru(fmt_date(partner["ReportPeriodFrom"]))
                     cars_total = 0.0
                     cars_data = []
