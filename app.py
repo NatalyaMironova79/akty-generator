@@ -9,6 +9,7 @@ from num2words import num2words
 import zipfile
 import io
 import re
+import os
 
 # --- Склонение ФИО ---
 try:
@@ -19,7 +20,6 @@ except Exception:
 
 ORG_FORMS = ["ЧТУП", "ОДО", "ООО", "ОАО", "ЗАО", "УП", "ИП", "ПТ", "СП", "АО"]
 
-# Расшифровки орг. форм в ТВОРИТЕЛЬНОМ падеже (для "составлен кем")
 ORG_FORMS_ABLT = {
     "ЧТУП": "Частным торговым унитарным предприятием",
     "УП": "Унитарным предприятием",
@@ -163,13 +163,16 @@ def short_name(full_name):
 # --- Streamlit UI ---
 st.set_page_config(page_title="Генератор актов", layout="centered")
 st.title("Генератор актов сдачи-приёмки")
-st.write("Загрузите XLS с данными и шаблон docx — получите ZIP с готовыми актами.")
+st.write("Загрузите XLS с данными — получите ZIP с готовыми актами.")
 
-col1, col2 = st.columns(2)
-with col1:
-    xls_file = st.file_uploader("XLS с данными", type=["xlsx"])
-with col2:
-    template_file = st.file_uploader("Шаблон docx", type=["docx"])
+# Шаблон docx — зашит в приложение
+TEMPLATE_PATH = "акт_шаблон.docx"
+
+if not os.path.exists(TEMPLATE_PATH):
+    st.error(f"Не найден шаблон {TEMPLATE_PATH}. Обратитесь к администратору.")
+    st.stop()
+
+xls_file = st.file_uploader("XLS с данными", type=["xlsx"])
 
 
 def fmt_date(value):
@@ -246,13 +249,11 @@ def remove_row(table, row_idx):
 
 
 # --- Основная логика ---
-if xls_file and template_file:
+if xls_file:
     if st.button("Сгенерировать акты", type="primary"):
         with st.spinner("Генерируем..."):
             with open("_uploaded.xlsx", "wb") as f:
                 f.write(xls_file.getbuffer())
-            with open("_uploaded.docx", "wb") as f:
-                f.write(template_file.getbuffer())
 
             wb = openpyxl.load_workbook("_uploaded.xlsx", data_only=True)
 
@@ -322,7 +323,6 @@ if xls_file and template_file:
                                         f"действующего на основании {executor_basis}")
                         executor_rep_short = short_name(executor_rep)
 
-                    # Таблица 1
                     serv_total = 0.0
                     serv_data = []
                     for idx, r in enumerate(org_serv, start=1):
@@ -338,7 +338,6 @@ if xls_file and template_file:
                             "total_cost": fmt_money(total),
                         })
 
-                    # Таблица 2
                     report_month = month_year_ru(fmt_date(partner["ReportPeriodFrom"]))
                     cars_total = 0.0
                     cars_data = []
@@ -373,7 +372,7 @@ if xls_file and template_file:
                         "vat_note_cars": vat_note_cars,
                     }
 
-                    doc = DocxTemplate("_uploaded.docx")
+                    doc = DocxTemplate(TEMPLATE_PATH)
                     doc.render(ctx)
                     doc.save("_temp.docx")
 
