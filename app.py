@@ -1,4 +1,3 @@
-
 import streamlit as st
 import openpyxl
 from datetime import datetime, timedelta
@@ -20,7 +19,6 @@ except Exception:
 
 ORG_FORMS = ["ЧТУП", "ОДО", "ООО", "ОАО", "ЗАО", "УП", "ИП", "ПТ", "СП", "АО"]
 
-# Расшифровки орг. форм в ТВОРИТЕЛЬНОМ падеже (для "составлен кем")
 ORG_FORMS_ABLT = {
     "ЧТУП": "Частным торговым унитарным предприятием",
     "УП": "Унитарным предприятием",
@@ -214,9 +212,12 @@ def normalize_vat_mode(value):
     return "с НДС" if ("с ндс" in s and "без" not in s) else "без НДС"
 
 
-def get_vat_note(vat_mode, vat_rate, total_with_vat):
+def get_vat_note(vat_mode, vat_rate, total_with_vat, executor_type=""):
     if vat_mode == "без НДС":
-        return "без НДС согласно пп.1.2, п.1, ст. 326 НК РБ"
+        if executor_type == "ИП":
+            return "без НДС согласно ч.2, ст. 112 НК РБ"
+        else:
+            return "без НДС согласно пп.1.2, п.1, ст. 326 НК РБ"
     try:
         rate = float(vat_rate)
     except (ValueError, TypeError):
@@ -299,7 +300,6 @@ if xls_file and template_file:
                     org_cars = [r for r in car_rows if r["OrgID"] == org_id]
 
                     if executor_type == "ИП":
-                        # ИП: "Индивидуальным предпринимателем {ФИО в твор.}, действующим/действующей на основании Свидетельства о госрегистрации № {OrgID}"
                         name_instr = name_instr_manual or decline_fio_ablt(executor_name)
                         gender = _detect_gender(executor_name)
                         participle = "действующей" if gender == "f" else "действующим"
@@ -310,7 +310,6 @@ if xls_file and template_file:
                                     f"{participle} на основании {basis_clean}")
                         executor_rep_short = short_name(executor_name)
                     else:
-                        # Юрлицо: "Частным торговым унитарным предприятием ГЕСН, в лице директора Иванова Ивана Ивановича, действующего на основании Устава"
                         full_type_ablt = ORG_FORMS_ABLT.get(executor_type, executor_type)
                         pos_gen = decline_position(executor_pos)
                         rep_gen = rep_gen_manual or decline_fio_gent(executor_rep)
@@ -322,7 +321,6 @@ if xls_file and template_file:
                                         f"действующего на основании {executor_basis}")
                         executor_rep_short = short_name(executor_rep)
 
-                    # --- Таблица 1: рекламные услуги ---
                     serv_total = 0.0
                     serv_data = []
                     for idx, r in enumerate(org_serv, start=1):
@@ -338,7 +336,6 @@ if xls_file and template_file:
                             "total_cost": fmt_money(total),
                         })
 
-                    # --- Таблица 2: услуги содействия ---
                     report_month = month_year_ru(fmt_date(partner["ReportPeriodFrom"]))
                     cars_total = 0.0
                     cars_data = []
@@ -353,7 +350,8 @@ if xls_file and template_file:
                         })
 
                     vat_mode = normalize_vat_mode(partner["VATMode"])
-                    vat_note = get_vat_note(vat_mode, partner["VATRate"], serv_total + cars_total)
+                    vat_note_serv = get_vat_note(vat_mode, partner["VATRate"], serv_total, executor_type)
+                    vat_note_cars = get_vat_note(vat_mode, partner["VATRate"], cars_total, executor_type)
                     report_to = fmt_date(partner["ReportPeriodTo"])
 
                     ctx = {
@@ -368,7 +366,8 @@ if xls_file and template_file:
                         "total_serv_cost_words": money_to_words(serv_total),
                         "total_reward_amount": fmt_money(cars_total),
                         "total_reward_amount_words": money_to_words(cars_total),
-                        "vat_note": vat_note,
+                        "vat_note_serv": vat_note_serv,
+                        "vat_note_cars": vat_note_cars,
                     }
 
                     doc = DocxTemplate("_uploaded.docx")
