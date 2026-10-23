@@ -19,6 +19,7 @@ except Exception:
 
 ORG_FORMS = ["ЧТУП", "ОДО", "ООО", "ОАО", "ЗАО", "УП", "ИП", "ПТ", "СП", "АО"]
 
+# Расшифровки орг. форм в ТВОРИТЕЛЬНОМ падеже (для "составлен кем")
 ORG_FORMS_ABLT = {
     "ЧТУП": "Частным торговым унитарным предприятием",
     "УП": "Унитарным предприятием",
@@ -321,6 +322,7 @@ if xls_file and template_file:
                                         f"действующего на основании {executor_basis}")
                         executor_rep_short = short_name(executor_rep)
 
+                    # Таблица 1
                     serv_total = 0.0
                     serv_data = []
                     for idx, r in enumerate(org_serv, start=1):
@@ -336,6 +338,7 @@ if xls_file and template_file:
                             "total_cost": fmt_money(total),
                         })
 
+                    # Таблица 2
                     report_month = month_year_ru(fmt_date(partner["ReportPeriodFrom"]))
                     cars_total = 0.0
                     cars_data = []
