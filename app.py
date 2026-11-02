@@ -20,6 +20,7 @@ except Exception:
 
 ORG_FORMS = ["ЧТУП", "ОДО", "ООО", "ОАО", "ЗАО", "УП", "ИП", "ПТ", "СП", "АО"]
 
+# Расшифровки орг. форм в ТВОРИТЕЛЬНОМ падеже
 ORG_FORMS_ABLT = {
     "ЧТУП": "Частным торговым унитарным предприятием",
     "УП": "Унитарным предприятием",
@@ -165,7 +166,6 @@ st.set_page_config(page_title="Генератор актов", layout="centered"
 st.title("Генератор актов сдачи-приёмки")
 st.write("Загрузите XLS с данными — получите ZIP с готовыми актами.")
 
-# Шаблон docx — зашит в приложение
 TEMPLATE_PATH = "акт_шаблон.docx"
 
 if not os.path.exists(TEMPLATE_PATH):
@@ -323,6 +323,7 @@ if xls_file:
                                         f"действующего на основании {executor_basis}")
                         executor_rep_short = short_name(executor_rep)
 
+                    # Таблица 1
                     serv_total = 0.0
                     serv_data = []
                     for idx, r in enumerate(org_serv, start=1):
@@ -338,6 +339,7 @@ if xls_file:
                             "total_cost": fmt_money(total),
                         })
 
+                    # Таблица 2
                     report_month = month_year_ru(fmt_date(partner["ReportPeriodFrom"]))
                     cars_total = 0.0
                     cars_data = []
@@ -378,29 +380,57 @@ if xls_file:
 
                     d = Document("_temp.docx")
 
+                    # --- Таблица 1 ---
                     t1 = d.tables[0]
+                    # Удаляем ТОЛЬКО вторую пустую строку (индекс 3), 
+                    # оставляем строку 2 как шаблон
                     remove_row(t1, 3)
-                    remove_row(t1, 2)
-                    for row in serv_data:
-                        new_row = clone_row_after(t1, 1)
-                        set_cell(new_row.cells[0], row["n"])
-                        set_cell(new_row.cells[1], row["cars_count"])
-                        set_cell(new_row.cells[2], row["period_from"])
-                        set_cell(new_row.cells[3], row["period_to"])
-                        set_cell(new_row.cells[4], row["price_per_car"])
-                        set_cell(new_row.cells[5], row["total_cost"])
+                    
+                    if serv_data:
+                        # Заполняем первую строку (индекс 2) данными
+                        first = serv_data[0]
+                        set_cell(t1.rows[2].cells[0], first["n"])
+                        set_cell(t1.rows[2].cells[1], first["cars_count"])
+                        set_cell(t1.rows[2].cells[2], first["period_from"])
+                        set_cell(t1.rows[2].cells[3], first["period_to"])
+                        set_cell(t1.rows[2].cells[4], first["price_per_car"])
+                        set_cell(t1.rows[2].cells[5], first["total_cost"])
+                        
+                        # Для остальных — клонируем строку 2
+                        for row in serv_data[1:]:
+                            new_row = clone_row_after(t1, 2)
+                            set_cell(new_row.cells[0], row["n"])
+                            set_cell(new_row.cells[1], row["cars_count"])
+                            set_cell(new_row.cells[2], row["period_from"])
+                            set_cell(new_row.cells[3], row["period_to"])
+                            set_cell(new_row.cells[4], row["price_per_car"])
+                            set_cell(new_row.cells[5], row["total_cost"])
+                    
+                    # Заполняем "Итого" (последняя строка)
                     set_cell(t1.rows[-1].cells[5], fmt_money(serv_total))
 
+                    # --- Таблица 2 ---
                     t2 = d.tables[1]
+                    # Удаляем ТОЛЬКО вторую пустую строку (индекс 2), 
+                    # оставляем строку 1 как шаблон
                     remove_row(t2, 2)
-                    remove_row(t2, 1)
-                    for row in cars_data:
-                        new_row = clone_row_after(t2, 0)
-                        set_cell(new_row.cells[0], row["n"])
-                        set_cell(new_row.cells[1], row["car_reg_number"])
-                        set_cell(new_row.cells[2], row["report_period"])
-                        set_cell(new_row.cells[3], row["trips_count"])
-                        set_cell(new_row.cells[4], row["reward_amount"])
+                    
+                    if cars_data:
+                        first = cars_data[0]
+                        set_cell(t2.rows[1].cells[0], first["n"])
+                        set_cell(t2.rows[1].cells[1], first["car_reg_number"])
+                        set_cell(t2.rows[1].cells[2], first["report_period"])
+                        set_cell(t2.rows[1].cells[3], first["trips_count"])
+                        set_cell(t2.rows[1].cells[4], first["reward_amount"])
+                        
+                        for row in cars_data[1:]:
+                            new_row = clone_row_after(t2, 1)
+                            set_cell(new_row.cells[0], row["n"])
+                            set_cell(new_row.cells[1], row["car_reg_number"])
+                            set_cell(new_row.cells[2], row["report_period"])
+                            set_cell(new_row.cells[3], row["trips_count"])
+                            set_cell(new_row.cells[4], row["reward_amount"])
+                    
                     set_cell(t2.rows[-1].cells[4], fmt_money(cars_total))
 
                     safe_name = re.sub(r"[^\w\-]", "_", str(executor_name))
