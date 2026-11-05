@@ -107,12 +107,6 @@ def decline_fio_gent(fio):
 
 
 def decline_position(position):
-    """Склоняет должность в родительный падеж.
-    Склоняет только первое слово, остальные оставляет как есть.
-    'директор' → 'директора'
-    'заместитель директора' → 'заместителя директора'
-    'генеральный директор' → 'генерального директора'
-    """
     if not position:
         return ""
     s = str(position).strip()
@@ -120,10 +114,9 @@ def decline_position(position):
         return ""
     if _morph is None:
         return s
-    
+
     words = s.split()
     if len(words) == 1:
-        # Одно слово — склоняем
         parsed = _morph.parse(words[0])[0]
         inflected = parsed.inflect({"gent"})
         if inflected:
@@ -133,7 +126,6 @@ def decline_position(position):
             return result
         return words[0]
     else:
-        # Несколько слов — склоняем ТОЛЬКО первое
         first = words[0]
         parsed = _morph.parse(first)[0]
         inflected = parsed.inflect({"gent"})
@@ -268,7 +260,6 @@ def remove_row(table, row_idx):
 
 
 def replace_vat_in_header(table, vat_mode):
-    """Заменяет 'без НДС' на 'с НДС' в шапке таблицы, если VATMode = 'с НДС'."""
     if vat_mode != "с НДС":
         return
     for row in table.rows:
@@ -282,7 +273,6 @@ def replace_vat_in_header(table, vat_mode):
 
 
 def center_table(table):
-    """Выравнивает все ячейки таблицы по центру."""
     for row in table.rows:
         for cell in row.cells:
             for p in cell.paragraphs:
@@ -346,7 +336,6 @@ if xls_file:
                         name_instr = name_instr_manual or decline_fio_ablt(executor_name)
                         gender = _detect_gender(executor_name)
                         participle = "действующей" if gender == "f" else "действующим"
-                        # Для ИП ВСЕГДА "Свидетельства о государственной регистрации № {OrgID}"
                         basis_clean = f"Свидетельства о государственной регистрации № {org_id}"
                         preamble = (f"Индивидуальным предпринимателем {name_instr}, "
                                     f"{participle} на основании {basis_clean}")
@@ -381,15 +370,21 @@ if xls_file:
                     report_month = month_year_ru(fmt_date(partner["ReportPeriodFrom"]))
                     cars_total = 0.0
                     cars_data = []
-                    for idx, r in enumerate(org_cars, start=1):
+                    
+                    # Собираем данные машин
+                    for r in org_cars:
                         reward = float(r["RewardAmount"] or 0)
                         cars_total += reward
                         cars_data.append({
-                            "n": idx, "car_reg_number": r["CarRegNumber"],
+                            "car_reg_number": r["CarRegNumber"],
                             "report_period": report_month,
                             "trips_count": int(r["TripsCount"] or 0),
                             "reward_amount": fmt_money(reward),
                         })
+                    
+                    # ГАРАНТИРОВАННАЯ ПЕРЕНУМЕРАЦИЯ: 1, 2, 3, 4...
+                    for i, row in enumerate(cars_data, start=1):
+                        row["n"] = i
 
                     vat_mode = normalize_vat_mode(partner["VATMode"])
                     vat_note_serv = get_vat_note(vat_mode, partner["VATRate"], serv_total, executor_type)
@@ -451,15 +446,15 @@ if xls_file:
                     
                     if cars_data:
                         first = cars_data[0]
-                        set_cell(t2.rows[1].cells[0], first["n"])
-                        set_cell(t2.rows[1].cells[1], first["car_reg_number"])
+                        set_cell(t2.rows[1].cells[0], first["n"])               # ← № п/п = 1
+                        set_cell(t2.rows[1].cells[1], first["car_reg_number"])  # ← регномер
                         set_cell(t2.rows[1].cells[2], first["report_period"])
                         set_cell(t2.rows[1].cells[3], first["trips_count"])
                         set_cell(t2.rows[1].cells[4], first["reward_amount"])
                         
                         for row in cars_data[1:]:
                             new_row = clone_row_after(t2, 1)
-                            set_cell(new_row.cells[0], row["n"])
+                            set_cell(new_row.cells[0], row["n"])               # ← 2, 3, 4...
                             set_cell(new_row.cells[1], row["car_reg_number"])
                             set_cell(new_row.cells[2], row["report_period"])
                             set_cell(new_row.cells[3], row["trips_count"])
